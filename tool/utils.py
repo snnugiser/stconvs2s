@@ -83,7 +83,20 @@ class Util:
             val_filename = os.path.join(val_dir, self.base_filename + '.txt')
             np.savetxt(train_filename, train_losses, delimiter=",", fmt='%g')
             np.savetxt(val_filename, val_losses, delimiter=",", fmt='%g')
-            
+
+    def my_save_examples(self, target, output, index_i, year_from, year_to):
+        # 函数功能为将test阶段的预测值与对应真实值进行保存
+        pre = output.cpu().numpy()
+        tru = target.cpu().numpy()
+        output_name = 'pre_%04d_%04d_%04d.npy' % (year_from, year_to,  index_i)
+        target_name = 'tru_%04d_%04d_%04d.npy' % (year_from, year_to,  index_i)
+        examples_dir = self.__create_dir('examples')
+        full_output = os.path.join(examples_dir, output_name)
+        full_target = os.path.join(examples_dir, target_name)
+        np.save(full_output, pre)
+        np.save(full_target, tru)
+
+
     def save_examples(self, inputs, target, output, step):
         input_seq_length = inputs.shape[2]
         row = step // input_seq_length
@@ -91,18 +104,25 @@ class Util:
         fig_ground_truth, ax_ground_truth = plt.subplots(nrows=row, ncols=input_seq_length)
         fig_prediction, ax_prediction = plt.subplots(nrows=row, ncols=input_seq_length)
         count = 0
-        for i in range(row):
-            for j in range(input_seq_length):
-                if step == 5:
-                    ax_input[j] = self.__create_image_plot(inputs, ax_input, i, j, count+j, step)  
-                    ax_ground_truth[j] = self.__create_image_plot(target, ax_ground_truth, i,j ,count+j, step)
-                    ax_prediction[j] = self.__create_image_plot(output, ax_prediction, i,j ,count+j, step)
-                else:
-                    if i == 0:
-                        ax_input[j] = self.__create_image_plot(inputs, ax_input, i, j, count+j, step, ax_input=True)
-                    ax_ground_truth[i][j] = self.__create_image_plot(target, ax_ground_truth, i,j ,count+j, step)
-                    ax_prediction[i][j] = self.__create_image_plot(output, ax_prediction, i,j ,count+j, step)
-            count+=5
+
+        if row == 1 and input_seq_length == 1:
+            i, j = 0, 0
+            # ax_input = self.__create_image_plot(inputs, ax_input, i, j, count+j, step)  
+            ax_ground_truth = self.__create_image_plot(target, ax_ground_truth, i,j ,count+j, step)
+            ax_prediction= self.__create_image_plot(output, ax_prediction, i,j ,count+j, step)
+        else:
+            for i in range(row):
+                for j in range(input_seq_length):
+                    if step == 5:
+                        ax_input[j] = self.__create_image_plot(inputs, ax_input, i, j, count+j, step)  
+                        ax_ground_truth[j] = self.__create_image_plot(target, ax_ground_truth, i,j ,count+j, step)
+                        ax_prediction[j] = self.__create_image_plot(output, ax_prediction, i,j ,count+j, step)
+                    else:
+                        if i == 0:
+                            ax_input[j] = self.__create_image_plot(inputs, ax_input, i, j, count+j, step, ax_input=True)
+                        ax_ground_truth[i][j] = self.__create_image_plot(target, ax_ground_truth, i,j ,count+j, step)
+                        ax_prediction[i][j] = self.__create_image_plot(output, ax_prediction, i,j ,count+j, step)
+                count+=5
                     
         examples_dir = self.__create_dir('examples')
         self.__save_image_plot(fig_input, examples_dir, 'input', step, fig_input=True)
@@ -163,7 +183,11 @@ class Util:
     def __create_image_plot(self, tensor, ax, i, j, index, step, ax_input=False):
         cmap = 'YlGnBu' if self.base_filename.startswith('chirps') else 'viridis'
         tensor_numpy = tensor[0,:,index,:,:].squeeze().cpu().numpy()
-        if step == 5 or ax_input:
+        if step == 1:
+            ax.imshow(np.flipud(tensor_numpy), cmap=cmap)
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+        elif step == 5 or ax_input:
             ax[j].imshow(np.flipud(tensor_numpy), cmap=cmap)
             ax[j].get_xaxis().set_visible(False)
             ax[j].get_yaxis().set_visible(False)

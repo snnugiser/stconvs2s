@@ -15,8 +15,11 @@ from tool.dataset import NetCDFDataset
 from tool.loss import RMSELoss
 from tool.utils import Util
 
+from ppgnss import gnss_utils
+
 import torch
 import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import DataLoader
 from torch import optim
 
@@ -25,35 +28,66 @@ class MLBuilder:
     def __init__(self, config, device):
         
         self.config = config
+        self.year_from = config.yearf
+        self.year_to = config.yeart
         self.device = device
         self.dataset_type = 'small-dataset' if (self.config.small_dataset) else 'full-dataset'
         self.step = str(config.step)
         self.dataset_name, self.dataset_file = self.__get_dataset_file()
         self.dropout_rate = self.__get_dropout_rate()
-        self.filename_prefix = self.dataset_name + '_step' + self.step
+        self.filename_prefix = self.dataset_name + '%04d_%04d_step' %(self.year_from, self.year_to) + self.step
                 
     def run_model(self, number):
         self.__define_seed(number)
         validation_split = 0.2
         test_split = 0.2
         # Loading the dataset
-        ds = xr.open_mfdataset(self.dataset_file)
-        if (self.config.small_dataset):
-            ds = ds[dict(sample=slice(0,500))]
+        # ds = xr.open_mfdataset(self.dataset_file)
+        # if (self.config.small_dataset):
+        #     ds = ds[dict(sample=slice(0,500))]
 
-        train_dataset = NetCDFDataset(ds, test_split=test_split, 
-                                      validation_split=validation_split)
-        val_dataset   = NetCDFDataset(ds, test_split=test_split, 
-                                      validation_split=validation_split, is_validation=True)
-        test_dataset  = NetCDFDataset(ds, test_split=test_split, 
-                                      validation_split=validation_split, is_test=True)
+        # train_dataset = NetCDFDataset(ds, test_split=test_split, 
+        #                               validation_split=validation_split)
+        # val_dataset   = NetCDFDataset(ds, test_split=test_split, 
+        #                               validation_split=validation_split, is_validation=True)
+        # test_dataset  = NetCDFDataset(ds, test_split=test_split, 
+        #                               validation_split=validation_split, is_test=True)
+        x_train_path = "data/x_train_%04d_%04d.obj" %(self.year_from, self.year_to)
+        y_train_path = "data/y_train_%04d_%04d.obj" %(self.year_from, self.year_to)
+        x_val_path = "data/x_val_%04d_%04d.obj" %(self.year_from, self.year_to)
+        y_val_path = "data/y_val_%04d_%04d.obj" %(self.year_from, self.year_to)
+        x_test_path = "data/x_test_%04d_%04d.obj" %(self.year_from, self.year_to)
+        y_test_path = "data/y_test_%04d_%04d.obj" %(self.year_from, self.year_to)
+        
+        x_train = gnss_utils.loadobject(x_train_path)
+        y_train = gnss_utils.loadobject(y_train_path)
+
+        x_val = gnss_utils.loadobject(x_val_path)
+        y_val = gnss_utils.loadobject(y_val_path)
+
+        x_test = gnss_utils.loadobject(x_test_path)
+        y_test = gnss_utils.loadobject(y_test_path)
+
+        x_train = np.expand_dims(x_train, axis=2)
+        y_train = np.expand_dims(y_train, axis=2)
+        x_val = np.expand_dims(x_val, axis=2)
+        y_val = np.expand_dims(y_val, axis=2)
+        x_test = np.expand_dims(x_test, axis=2)
+        y_test = np.expand_dims(y_test, axis=2)
+
+        # 进行数据封装 使得X-Y一一对应起来
+        train_dataset = TensorDataset(torch.as_tensor(x_train, dtype=torch.float32), torch.as_tensor(y_train, dtype=torch.float32))
+        val_dataset = TensorDataset(torch.as_tensor(x_val, dtype=torch.float32), torch.as_tensor(y_val, dtype=torch.float32))
+        test_dataset = TensorDataset(torch.as_tensor(x_test, dtype=torch.float32), torch.as_tensor(y_test, dtype=torch.float32)) 
+        del x_train, y_train, x_val, y_val, x_test, y_test
+
         if (self.config.verbose):
-            print('[X_train] Shape:', train_dataset.X.shape)
-            print('[y_train] Shape:', train_dataset.y.shape)
-            print('[X_val] Shape:', val_dataset.X.shape)
-            print('[y_val] Shape:', val_dataset.y.shape)
-            print('[X_test] Shape:', test_dataset.X.shape)
-            print('[y_test] Shape:', test_dataset.y.shape)
+            print('[X_train] Shape:', train_dataset.tensors[0].shape)
+            print('[y_train] Shape:', train_dataset.tensors[1].shape)
+            print('[X_val] Shape:', val_dataset.tensors[0].shape)
+            print('[y_val] Shape:', val_dataset.tensors[1].shape)
+            print('[X_test] Shape:', test_dataset.tensors[0].shape)
+            print('[y_test] Shape:', test_dataset.tensors[1].shape)
             print(f'Train on {len(train_dataset)} samples, validate on {len(val_dataset)} samples')
                         
         params = {'batch_size': self.config.batch, 
@@ -88,7 +122,7 @@ class MLBuilder:
             
         # Creating the model    
         model_bulder = models[self.config.model]
-        model = model_bulder(train_dataset.X.shape, self.config.num_layers, self.config.hidden_dim, 
+        model = model_bulder(train_dataset.tensors[0].shape, self.config.num_layers, self.config.hidden_dim, 
                              self.config.kernel_size, self.device, self.dropout_rate, int(self.step))
         model.to(self.device)
         criterion = RMSELoss()
@@ -113,7 +147,7 @@ class MLBuilder:
 
     def __execute_learning(self, model, criterion, optimizer, train_loader, val_loader, util):
         checkpoint_filename = util.get_checkpoint_filename()    
-        trainer = Trainer(model, criterion, optimizer, train_loader, val_loader, self.config.epoch, 
+        trainer = Trainer(self.year_from, self.year_to, model, criterion, optimizer, train_loader, val_loader, self.config.epoch, 
                           self.device, util, self.config.verbose, self.config.patience, self.config.no_stop)
     
         start_timestamp = tm.time()
@@ -149,7 +183,7 @@ class MLBuilder:
             time_per_epochs = train_time / (best_epoch + self.config.patience)
             print(f'Training time/epochs: {util.to_readable_time(time_per_epochs)} [{time_per_epochs}]')
         
-        test_rmse, test_mae = evaluator.eval(is_chirps=self.config.chirps)
+        test_rmse, test_mae = evaluator.eval(self.year_from, self.year_to, is_chirps=self.config.chirps)
         print(f'Test RMSE: {test_rmse:.4f}\nTest MAE: {test_mae:.4f}')
                         
         return {'best_epoch': best_epoch,
@@ -181,6 +215,7 @@ class MLBuilder:
         else:
             dataset_file = 'data/dataset-ucar-1979-2015-seq5-ystep' + self.step + '.nc'
             dataset_name = 'cfsr'
+            dataset_name = 'sgge'
         
         return dataset_name, dataset_file
         

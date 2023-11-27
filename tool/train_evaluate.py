@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class Trainer:
     
-    def __init__(self, model, loss_fn, optimizer, train_loader, val_loader, 
+    def __init__(self, year_from, year_to, model, loss_fn, optimizer, train_loader, val_loader, 
                  epochs, device, util, verbose, patience, no_stop):
         self.model = model
         self.loss_fn = loss_fn
@@ -18,6 +18,8 @@ class Trainer:
         self.verbose = verbose
         self.util = util
         self.early_stopping = EarlyStopping(verbose, patience, no_stop)
+        self.year_from = year_from
+        self.year_to = year_to
         
     def fit(self, filename, is_chirps=False):
         train_losses, val_losses = [], []
@@ -25,7 +27,7 @@ class Trainer:
         for epoch in range(1,self.epochs+1):
             train_loss = self.__train(is_chirps)
             evaluator = Evaluator(self.model, self.loss_fn, self.optimizer, self.val_loader, self.device, self.util)
-            val_loss,_ = evaluator.eval(is_test=False, is_chirps=is_chirps)
+            val_loss,_ = evaluator.eval(self.year_from, self.year_to, is_test=False, is_chirps=is_chirps)
             if (self.verbose):
                 print(f'Epoch: {epoch}/{self.epochs} - loss: {train_loss:.4f} - val_loss: {val_loss:.4f}')
             train_losses.append(train_loss)
@@ -45,7 +47,9 @@ class Trainer:
         epoch_loss = 0.0
         mask_land = self.util.get_mask_land().to(self.device)
         for batch_idx, (inputs, target) in enumerate(self.train_loader):
-            inputs, target = inputs.to(self.device), target.to(self.device)
+            # inputs, target = inputs.to(self.device), target.to(self.device)
+            inputs, target = inputs.to(torch.float32).to(self.device), target.to(torch.float32).to(self.device)
+
             # get prediction
             output = self.model(inputs)
             if is_chirps:
@@ -109,7 +113,7 @@ class Evaluator:
         self.step = int(step)
         self.device = device
        
-    def eval(self, is_test=True, is_chirps=False):
+    def eval(self, year_from, year_to, is_test=True, is_chirps=False):
         self.model.eval()
         cumulative_rmse, cumulative_mae = 0.0, 0.0
         observation_rmse, observation_mae = [0]*self.step, [0]*self.step
@@ -127,6 +131,8 @@ class Evaluator:
                 cumulative_mae += mae_loss.item()
                 
                 if is_test:
+                    self.util.my_save_examples(target, output, batch_i, year_from, year_to)
+                    
                     #metric per observation (lat x lon) at each time step (t) 
                     for i in range(self.step):
                         output_observation = output[:,:,i,:,:]

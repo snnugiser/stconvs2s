@@ -22,7 +22,8 @@ class Conv3D(nn.Module):
             in_channels = out_channels
         
         padding = kernel_size // 2
-        self.conv_final = nn.Conv3d(in_channels=hidden_dim, out_channels=initial_in_channels, kernel_size=kernel_size, 
+        out_channels = 1
+        self.conv_final = nn.Conv3d(in_channels=hidden_dim, out_channels=out_channels, kernel_size=kernel_size, 
                                     padding=padding)
 
         

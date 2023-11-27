@@ -18,6 +18,8 @@ def get_arguments():
     parser.add_argument('-b', '--batch', type=int, default=15)
     parser.add_argument('-p', '--patience', type=int, default=16)
     parser.add_argument('-w', '--workers', type=int, default=4)
+    parser.add_argument('--yearf', type=int, default=2018)
+    parser.add_argument("--yeart", type=int, default=2019)
     parser.add_argument('-c', '--cuda', default=0)
     parser.add_argument('-s', '--step', default=5)
     parser.add_argument('-m', '--model', default='stconvs2s')

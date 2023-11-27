@@ -3,3 +3,10 @@
 *.hdf
 *.nc
 **/dask-worker-space
+data/*.obj
+.vscode/
+__pycache__/
+venv/
+*.npy
+output/
+data/
